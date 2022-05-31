@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista Zadań</title>
+</head>
+<body onload="init()">
+    <h1>Lista zadań do wykonania</h1>
+    <h2>Witaj <span id="name"></span>, zadania do wykonania na dziś:</h2>
+    <div id="taskList"></div>
+    <input type="text" name="" id="task">
+    <button onclick="addTask()">Dodaj!</button>
+
+    <script>
+    function init(){
+        if(window.localStorage.getItem('name')==null){
+            let name = window.prompt('Podaj swoje imię: ');
+            window.localStorage.setItem('name', name);
+        }
+    
+        document.getElementById("name").innerHTML=window.localStorage.getItem('name');
+        let taskList=JSON.parse(window.localStorage.getItem('taskList'));
+        if(taskList==null){
+            taskList=Array();
+            window.localStorage.setItem('taskList', JSON.stringify(taskList));
+        }
+        showTasks();
+    }
+
+    function addTask(){
+        let task=document.getElementById('task').value;
+        let taskList=JSON.parse(window.localStorage.getItem('taskList'));
+        taskList.push(task);
+        window.localStorage.setItem('taskList', JSON.stringify(taskList));
+        document.getElementById('task').value="";
+        showTasks();
+    }
+    function showTasks(){
+        let taskList=document.getElementById('taskList');
+        let taskArray= JSON.parse(window.localStorage.getItem('taskList'));
+        let buffor="";
+        buffor+="<ul>";
+        for(let i=0; i<taskArray.length; i++){
+            buffor+="<li><button onclick=\"removeTask("+i+")\">Usuń</button>"+taskArray[i]+"</li>";
+        }
+        buffor+="</ul>";
+        taskList.innerHTML=buffor;
+    }
+
+    function removeTask(i){
+        let taskArray=JSON.parse(window.localStorage.getItem('taskList'));
+        taskArray.splice(i, 1);
+        window.localStorage.setItem('taskList', JSON.stringify(taskArray));
+        showTasks();
+    }
+    </script>
+</body>
+</html>
