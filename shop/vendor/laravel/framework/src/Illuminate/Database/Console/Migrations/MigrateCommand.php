@@ -3,7 +3,7 @@
 namespace Illuminate\Database\Console\Migrations;
 
 use Illuminate\Console\ConfirmableTrait;
-use Illuminate\Console\View\Components\Task;
+use Illuminate\Contracts\Console\Isolatable;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Events\SchemaLoaded;
 use Illuminate\Database\Migrations\Migrator;
@@ -12,7 +12,7 @@ use Illuminate\Database\SqlServerConnection;
 use PDOException;
 use Throwable;
 
-class MigrateCommand extends BaseCommand
+class MigrateCommand extends BaseCommand implements Isolatable
 {
     use ConfirmableTrait;
 
@@ -138,7 +138,7 @@ class MigrateCommand extends BaseCommand
         return retry(2, fn () => $this->migrator->repositoryExists(), 0, function ($e) {
             try {
                 if ($e->getPrevious() instanceof SQLiteDatabaseDoesNotExistException) {
-                    return $this->createMissingSqliteDatbase($e->getPrevious()->path);
+                    return $this->createMissingSqliteDatabase($e->getPrevious()->path);
                 }
 
                 $connection = $this->migrator->resolveConnection($this->option('database'));
@@ -163,7 +163,7 @@ class MigrateCommand extends BaseCommand
      * @param  string  $path
      * @return bool
      */
-    protected function createMissingSqliteDatbase($path)
+    protected function createMissingSqliteDatabase($path)
     {
         if ($this->option('force')) {
             return touch($path);
@@ -212,7 +212,7 @@ class MigrateCommand extends BaseCommand
 
             $freshConnection = $this->migrator->resolveConnection($this->option('database'));
 
-            return tap($freshConnection->unprepared("CREATE DATABASE IF NOT EXISTS {$connection->getDatabaseName()}"), function () {
+            return tap($freshConnection->unprepared("CREATE DATABASE IF NOT EXISTS `{$connection->getDatabaseName()}`"), function () {
                 $this->laravel['db']->purge();
             });
         } finally {

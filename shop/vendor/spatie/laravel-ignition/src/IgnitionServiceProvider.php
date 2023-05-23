@@ -2,14 +2,17 @@
 
 namespace Spatie\LaravelIgnition;
 
+use Exception;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\ViewException;
 use Laravel\Octane\Events\RequestReceived;
+use Laravel\Octane\Events\RequestTerminated;
 use Laravel\Octane\Events\TaskReceived;
 use Laravel\Octane\Events\TickReceived;
+use Monolog\Level;
 use Monolog\Logger;
 use Spatie\FlareClient\Flare;
 use Spatie\FlareClient\FlareMiddleware\AddSolutions;
@@ -31,7 +34,6 @@ use Spatie\LaravelIgnition\Recorders\JobRecorder\JobRecorder;
 use Spatie\LaravelIgnition\Recorders\LogRecorder\LogRecorder;
 use Spatie\LaravelIgnition\Recorders\QueryRecorder\QueryRecorder;
 use Spatie\LaravelIgnition\Renderers\IgnitionExceptionRenderer;
-use Spatie\LaravelIgnition\Renderers\IgnitionWhoopsHandler;
 use Spatie\LaravelIgnition\Solutions\SolutionProviders\SolutionProviderRepository;
 use Spatie\LaravelIgnition\Support\FlareLogHandler;
 use Spatie\LaravelIgnition\Support\SentReports;
@@ -99,19 +101,10 @@ class IgnitionServiceProvider extends ServiceProvider
 
     protected function registerRenderer(): void
     {
-        if (interface_exists('Whoops\Handler\HandlerInterface')) {
-            $this->app->bind(
-                'Whoops\Handler\HandlerInterface',
-                fn (Application $app) => $app->make(IgnitionWhoopsHandler::class)
-            );
-        }
-
-        if (interface_exists('Illuminate\Contracts\Foundation\ExceptionRenderer')) {
-            $this->app->bind(
-                'Illuminate\Contracts\Foundation\ExceptionRenderer',
-                fn (Application $app) => $app->make(IgnitionExceptionRenderer::class)
-            );
-        }
+        $this->app->bind(
+            'Illuminate\Contracts\Foundation\ExceptionRenderer',
+            fn (Application $app) => $app->make(IgnitionExceptionRenderer::class)
+        );
     }
 
     protected function registerFlare(): void
@@ -244,15 +237,9 @@ class IgnitionServiceProvider extends ServiceProvider
 
     protected function startRecorders(): void
     {
-        // TODO: Ignition feature toggles
-
-        $this->app->make(DumpRecorder::class)->start();
-
-        $this->app->make(LogRecorder::class)->start();
-
-        $this->app->make(QueryRecorder::class)->start();
-
-        $this->app->make(JobRecorder::class)->start();
+        foreach ($this->app->config['ignition.recorders'] ?? [] as $recorder) {
+            $this->app->make($recorder)->start();
+        }
     }
 
     protected function configureQueue(): void
@@ -267,6 +254,7 @@ class IgnitionServiceProvider extends ServiceProvider
         // When using a sync queue this also reports the queued reports from previous exceptions.
         $queue->before(function () {
             $this->resetFlareAndLaravelIgnition();
+            app(Flare::class)->sendReportsImmediately();
         });
 
         // Send queued reports (and reset) after executing a queue job.
@@ -279,13 +267,17 @@ class IgnitionServiceProvider extends ServiceProvider
 
     protected function getLogLevel(string $logLevelString): int
     {
-        $logLevel = Logger::getLevels()[strtoupper($logLevelString)] ?? null;
+        try {
+            $logLevel = Level::fromName($logLevelString);
+        } catch (Exception $exception) {
+            $logLevel = null;
+        }
 
         if (! $logLevel) {
             throw InvalidConfig::invalidLogLevel($logLevelString);
         }
 
-        return $logLevel;
+        return $logLevel->value;
     }
 
     protected function getFlareMiddleware(): array
@@ -326,6 +318,10 @@ class IgnitionServiceProvider extends ServiceProvider
         });
 
         $this->app['events']->listen(TickReceived::class, function () {
+            $this->resetFlareAndLaravelIgnition();
+        });
+
+        $this->app['events']->listen(RequestTerminated::class, function () {
             $this->resetFlareAndLaravelIgnition();
         });
     }
